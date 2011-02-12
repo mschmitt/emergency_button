@@ -4,6 +4,8 @@ use diagnostics;
 use Time::HiRes qw(usleep ualarm);
 use Device::SerialPort;
 
+fork && exit;
+
 $| = 1;
 $0 = 'emergency_button_daemon';
 
@@ -24,8 +26,12 @@ my $available = 1;
 $SIG{ALRM} = sub { $available = 1; };
 while(1){
 	$port->write("a");
+	my $asked_at = time();
 	my $received;
 	while(1){
+		if (time() - $asked_at > 2){
+			die "Good grief! No serial comm! Arduino on fire?\n";
+		}
 		my $byte = $port->read(1);
 		$received .= $byte;
 		last if ($byte eq "\n");
