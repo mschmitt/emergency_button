@@ -1,11 +1,22 @@
+#include <IRremote.h>
+
+const int IRREMOTE_PIN = 6;
 const int BUTTON_PIN = 12;
 const int LED_PIN = 13;
 const int DEBOUNCE = 50;
 int button_state = HIGH;
 int button_oldstate = HIGH;
+unsigned long button_value;         // returned via serial
+unsigned long button_value_old = 0; // stored value if continuation is seen
+unsigned long last_ir_action = 0;
+
 long button_statechange = millis();
 long last_poll = millis();
 long last_press;
+
+// Instantiate Infrared library
+IRrecv irrecv(IRREMOTE_PIN);
+decode_results results;
 
 // Internal Pullup
 // Button goes LOW when pressed
@@ -15,7 +26,10 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT);
   digitalWrite(BUTTON_PIN, HIGH);
+  // Start the infrared receiver
+  irrecv.enableIRIn();
   Serial.println("Emergency button poller is ready.");
+
 }
 
 void loop() {
@@ -34,8 +48,34 @@ void loop() {
   // Save when we've seen the button pressed for the last time
   if (button_state == LOW){
     last_press = now;
+    button_value = 1;
     // LED signals that we have a pressed event pending
     digitalWrite(LED_PIN, HIGH);
+  }
+  
+  // Test for infrared input  
+  if (irrecv.decode(&results)){
+    if (results.value != 0){ // Skip junk
+      if (results.value == 0xFFFFFFFF){ // Continuation
+        // Uncache saved button value (for continuation) if no IR for more than half second
+        if (millis() - last_ir_action > 500){
+          button_value_old = 0;
+        }
+        if (button_value_old != 0){
+          last_press = now;
+          button_value = button_value_old;
+          last_ir_action = millis();
+          digitalWrite(LED_PIN, HIGH);
+        }
+      }else{
+        last_press = now;
+        button_value = results.value;
+        button_value_old = button_value;
+        last_ir_action = millis();
+        digitalWrite(LED_PIN, HIGH);
+      }
+    }
+    irrecv.resume();
   }
   
   // Test whether serial ports wants an update
@@ -50,6 +90,8 @@ void loop() {
     Serial.print(now);
     Serial.print(" previous=");
     Serial.print(last_poll);
+    Serial.print(" button=");
+    Serial.print(button_value, HEX);
     Serial.print(" pressed=");
 
     // If the button was pressed since we were polled last, say so

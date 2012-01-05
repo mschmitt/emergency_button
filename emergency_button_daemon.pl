@@ -6,6 +6,28 @@ use Device::SerialPort;
 
 fork && exit;
 
+my $ircode;
+# hardwired button
+$ircode->{'1'} = 'builtin'; 
+# Apple A1156 / http://lirc.sourceforge.net/remotes/apple/A1156 
+# last byte must be stripped in code
+$ircode->{'77E120'} = 'playpause';
+$ircode->{'77E1D0'} = 'up';
+$ircode->{'77E1B0'} = 'down';
+$ircode->{'77E110'} = 'back';
+$ircode->{'77E1E0'} = 'forward';
+$ircode->{'77E140'} = 'menu';
+# Martin's undocumented Sony MRC60
+# match all bytes
+$ircode->{'C1310EF'} = 'playpause';
+$ircode->{'C1300FF'} = 'up';
+$ircode->{'C13807F'} = 'down';
+$ircode->{'C1320DF'} = 'back';
+$ircode->{'C13A05F'} = 'forward';
+$ircode->{'C1330CF'} = 'menu';
+$ircode->{'C13906F'} = 'green';
+$ircode->{'C13B04F'} = 'red';
+
 $| = 1;
 $0 = 'emergency_button_daemon';
 
@@ -36,9 +58,19 @@ while(1){
 		last if ($byte eq "\n");
 	}
 	# print $received;
-	if ($received =~ /pressed=true/){
+	if ($received =~ /button=(.+) pressed=true/){
 		if ($available){
-			print "Detected buttonpress.\n";
+			my $raw_button = $1;
+			my $cooked_button = $raw_button;
+			if ($raw_button =~ /^(77E1..)..$/){
+				$cooked_button = $1;
+			}
+			my $action = 'unknown';
+			if ($ircode->{$cooked_button}){
+				$action = $ircode->{$cooked_button};
+			}
+			print "Detected buttonpress (raw) button=$raw_button, cooked=$cooked_button, action=$action\n";
+			$ENV{'BUTTON_ACTION'} = $action;
 			system(@ARGV);
 			$available = 0;
 			ualarm(500000);
